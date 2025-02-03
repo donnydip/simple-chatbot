@@ -2,30 +2,41 @@ import { defineStore } from 'pinia'
 
 export const useChatStore = defineStore('chat', {
   state: () => ({
-    messages: [{ text: 'Hello! How can I assist you?', sender: 'bot' }],
+    messages: [],
   }),
 
   actions: {
     async sendMessage(userInput) {
-      this.messages.push({ text: userInput, sender: 'user' })
+
+      this.messages.push({role: 'user',content: userInput})
+
+      const validMessages = this.messages.filter(msg =>
+        msg.content !== 'Oops! Error connecting to AI.'
+      )
+
+      const payload = {
+        model: 'gpt-3.5-turbo',
+        messages: validMessages,
+      }
 
       try {
-        const response = await fetch('http://localhost:1234/v1/chat/completions', {
+        const response = await fetch(import.meta.env.VITE_API_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_API_KEY}`,
           },
-          body: JSON.stringify({
-            model: 'deepseek-r1-distill-qwen-1.5b',
-            messages: [
-              { role: 'system', content: 'You are The Smartest Entity' },
-              { role: 'user', content: userInput },
-            ],
-            temperature: 0.7,
-            max_tokens: -1,
-            stream: false,
-          }),
+          body: JSON.stringify(payload),
         })
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('Error Response:', errorText)
+          if (response.status === 401) {
+            throw new Error('Unauthorized: Invalid API key');
+          } else {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+        }
 
         const data = await response.json()
 
@@ -33,10 +44,10 @@ export const useChatStore = defineStore('chat', {
 
         botMessage = botMessage.replace(/<think>[\s\S]*?<\/think>/, '').trim()
 
-        this.messages.push({ text: botMessage, sender: 'bot' })
+        this.messages.push({ role: 'assistant', content: botMessage })
       } catch (error) {
         console.error('Error fetching AI response:', error)
-        this.messages.push({ text: 'Oops! Error connecting to AI.', sender: 'bot' })
+        this.messages.push({ role: 'assistant', content: 'Oops! Error connecting to AI.' })
       }
     },
   },
